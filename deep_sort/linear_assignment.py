@@ -188,3 +188,18 @@ def gate_cost_matrix(
             track.mean, track.covariance, measurements, only_position)
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
     return cost_matrix
+
+
+def maha_cost_matrx(
+        kf, tracks, detections, track_indices, detection_indices):
+
+    cost_matrix = np.zeros((len(track_indices), len(detection_indices)))
+
+    measurements = np.asarray(
+        [detections[i].to_xyah() for i in detection_indices])
+    for row, track_idx in enumerate(track_indices):
+        track = tracks[track_idx]
+        gating_distance = kf.gating_distance(
+            track.mean, track.covariance, measurements)
+        cost_matrix[row, :] = gating_distance
+    return cost_matrix
