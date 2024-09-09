@@ -41,6 +41,8 @@ def gather_sequence_info(sequence_dir, detection_file):
 
     """
     image_dir = os.path.join(sequence_dir, "img1")
+
+    # {id: image_abs_path, ...}
     image_filenames = {
         int(os.path.splitext(f)[0]): os.path.join(image_dir, f)
         for f in os.listdir(image_dir)}
@@ -114,7 +116,7 @@ def create_detections(detection_mat, frame_idx, min_height=0):
         Returns detection responses at given frame index.
 
     """
-    frame_indices = detection_mat[:, 0].astype(np.int)
+    frame_indices = detection_mat[:, 0].astype(np.int32)
     mask = frame_indices == frame_idx
 
     detection_list = []

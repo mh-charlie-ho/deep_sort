@@ -9,12 +9,22 @@ See the [arXiv preprint](https://arxiv.org/abs/1703.07402) for more information.
 
 ## Dependencies
 
-The code is compatible with Python 2.7 and 3. The following dependencies are
+The code is compatible with Python 3.8.19. The following dependencies are
 needed to run the tracker:
 
-* NumPy
-* sklearn
-* OpenCV
+* NumPy - 1.24.3
+* sklearn - 1.3.0
+* OpenCV - 4.10.0
+
+use conda to prepare the env
+```
+conda create -n deep_sort python=3.8
+conda activate deep_sort
+
+conda install numpy
+conda install opencv
+conda install scikit-learn
+```
 
 Additionally, feature generation requires TensorFlow (>= 1.0).
 
