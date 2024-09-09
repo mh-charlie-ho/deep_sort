@@ -75,6 +75,8 @@ class NoVisualization(object):
     def draw_trackers(self, trackers):
         pass
 
+    # 就只是每一幀執行完換下一幀
+    # 遍歷所有影像(幀)
     def run(self, frame_callback):
         while self.frame_idx <= self.last_idx:
             frame_callback(self, self.frame_idx)

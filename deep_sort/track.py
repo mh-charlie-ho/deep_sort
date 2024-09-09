@@ -135,9 +135,10 @@ class Track:
             The associated detection.
 
         """
+        # 用測量值來更新新的 mean covariance
         self.mean, self.covariance = kf.update(
             self.mean, self.covariance, detection.to_xyah())
-        self.features.append(detection.feature)
+        self.features.append(detection.feature)  # 累積特徵
 
         self.hits += 1
         self.time_since_update = 0

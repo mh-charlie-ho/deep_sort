@@ -42,18 +42,20 @@ def non_max_suppression(boxes, max_bbox_overlap, scores=None):
 
     x1 = boxes[:, 0]
     y1 = boxes[:, 1]
-    x2 = boxes[:, 2] + boxes[:, 0]
-    y2 = boxes[:, 3] + boxes[:, 1]
+    x2 = boxes[:, 2] + boxes[:, 0]  # w + x
+    y2 = boxes[:, 3] + boxes[:, 1]  # h + y
 
+    # +1 是為了包含邊界，因為框是由像素構成的，要包含框的像素範圍
     area = (x2 - x1 + 1) * (y2 - y1 + 1)
     if scores is not None:
         idxs = np.argsort(scores)
     else:
         idxs = np.argsort(y2)
+    # 排序後的原始陣列索引
 
     while len(idxs) > 0:
         last = len(idxs) - 1
-        i = idxs[last]
+        i = idxs[last]  # 先找信心最大的
         pick.append(i)
 
         xx1 = np.maximum(x1[i], x1[idxs[:last]])
@@ -61,9 +63,10 @@ def non_max_suppression(boxes, max_bbox_overlap, scores=None):
         xx2 = np.minimum(x2[i], x2[idxs[:last]])
         yy2 = np.minimum(y2[i], y2[idxs[:last]])
 
+        # w*h: 目前最大信心的框與所有的交集
         w = np.maximum(0, xx2 - xx1 + 1)
         h = np.maximum(0, yy2 - yy1 + 1)
-
+        
         overlap = (w * h) / area[idxs[:last]]
 
         idxs = np.delete(

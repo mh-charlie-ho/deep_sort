@@ -46,15 +46,21 @@ def gather_sequence_info(sequence_dir, detection_file):
     image_filenames = {
         int(os.path.splitext(f)[0]): os.path.join(image_dir, f)
         for f in os.listdir(image_dir)}
-    groundtruth_file = os.path.join(sequence_dir, "gt/gt.txt")
 
-    detections = None
-    if detection_file is not None:
-        detections = np.load(detection_file)
+    # desired path
+    # there is not data in test folder
+    # there is data in train folder
     groundtruth = None
+    groundtruth_file = os.path.join(sequence_dir, "gt/gt.txt")
     if os.path.exists(groundtruth_file):
         groundtruth = np.loadtxt(groundtruth_file, delimiter=',')
 
+    # this is the feature data for each frame(image).
+    detections = None
+    if detection_file is not None:
+        detections = np.load(detection_file)  # load npy, the dedicated use.
+
+    # get the image pixel size from the first image
     if len(image_filenames) > 0:
         image = cv2.imread(next(iter(image_filenames.values())),
                            cv2.IMREAD_GRAYSCALE)
@@ -62,6 +68,8 @@ def gather_sequence_info(sequence_dir, detection_file):
     else:
         image_size = None
 
+    # get the image num if there are images from img1.
+    # if not, from detection data.
     if len(image_filenames) > 0:
         min_frame_idx = min(image_filenames.keys())
         max_frame_idx = max(image_filenames.keys())
@@ -80,6 +88,8 @@ def gather_sequence_info(sequence_dir, detection_file):
     else:
         update_ms = None
 
+    # 後面10個col才是存特徵
+    # 前面10個col是存MOTChallenge detection format: <frame>, <id>, <bb_left>, <bb_top>, <bb_width>, <bb_height>, <conf>, <x>, <y>, <z>
     feature_dim = detections.shape[1] - 10 if detections is not None else 0
     seq_info = {
         "sequence_name": os.path.basename(sequence_dir),
@@ -89,8 +99,8 @@ def gather_sequence_info(sequence_dir, detection_file):
         "image_size": image_size,
         "min_frame_idx": min_frame_idx,
         "max_frame_idx": max_frame_idx,
-        "feature_dim": feature_dim,
-        "update_ms": update_ms
+        "feature_dim": feature_dim,  # How many dimensions does the feature have for each frame? 
+        "update_ms": update_ms       # How long is the interval between images? 
     }
     return seq_info
 
@@ -121,7 +131,7 @@ def create_detections(detection_mat, frame_idx, min_height=0):
 
     detection_list = []
     for row in detection_mat[mask]:
-        bbox, confidence, feature = row[2:6], row[6], row[10:]
+        bbox, confidence, feature = row[2:6], row[6], row[10:]  # 從detection檔案中抓出特徵，這些特徵是對於每個bounding box
         if bbox[3] < min_height:
             continue
         detection_list.append(Detection(bbox, confidence, feature))
@@ -159,30 +169,46 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
         If True, show visualization of intermediate tracking results.
 
     """
-    seq_info = gather_sequence_info(sequence_dir, detection_file)
-    metric = nn_matching.NearestNeighborDistanceMetric(
-        "cosine", max_cosine_distance, nn_budget)
+    seq_info = gather_sequence_info(sequence_dir, detection_file) # get the all source information
+
+    # 初始化tracker
+
+    # max_cosine_distance: default 0.2
+    # nn_budget: set to 100
+    metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
     tracker = Tracker(metric)
     results = []
 
+    # vis: visualizer
+    # frame_idx: seq_info["min_frame_idx"]
     def frame_callback(vis, frame_idx):
+        # 執行的開頭
         print("Processing frame %05d" % frame_idx)
 
+        # get the valid pre-prepared bounding box in this frame ========================================================================
+
         # Load image and generate detections.
+        # 從detection中抓取每個bounding box的特徵，會先做初步篩選，小於min_detection_height高度的框就不用
         detections = create_detections(
-            seq_info["detections"], frame_idx, min_detection_height)
+            seq_info["detections"],
+            frame_idx,
+            min_detection_height)
+        # 在篩選一次，小於min_confidence就不用
         detections = [d for d in detections if d.confidence >= min_confidence]
 
         # Run non-maxima suppression.
         boxes = np.array([d.tlwh for d in detections])
-        scores = np.array([d.confidence for d in detections])
-        indices = preprocessing.non_max_suppression(
-            boxes, nms_max_overlap, scores)
-        detections = [detections[i] for i in indices]
+        scores = np.array([d.confidence for d in detections])  # 信心指數(目前還不確定怎麼算的)，這個指數用來判斷這個框是物件還是背景
+        indices = preprocessing.non_max_suppression(boxes, nms_max_overlap, scores) # NMS方法消除重疊的框，這邊的IOU不是除以交集，是指除以本身的框
+        detections = [detections[i] for i in indices]  # 輸出篩選好的框
+        # ==============================================================================================================================
 
         # Update tracker.
-        tracker.predict()
-        tracker.update(detections)
+        # self.age += 1                ,该track自出现以来的总帧数加1 沒什麼用
+        # self.time_since_update += 1  ,该track自最近一次更新以来的总帧数加1
+        tracker.predict()  # 第一Round什麼都不會發生
+        # 有關連到並更新 time_since_update = 0
+        tracker.update(detections)  # the first round will initialize all detection
 
         # Update visualization.
         if display:
@@ -193,21 +219,30 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
             vis.draw_trackers(tracker.tracks)
 
         # Store results.
+        # the first round tracks is from the detection bb position
         for track in tracker.tracks:
+            # 確認該物件已經被初始化完成
             if not track.is_confirmed() or track.time_since_update > 1:
                 continue
-            bbox = track.to_tlwh()
+            # 輸出track的bb tlwh
+            bbox = track.to_tlwh()  # 用估計的位置
             results.append([
                 frame_idx, track.track_id, bbox[0], bbox[1], bbox[2], bbox[3]])
 
     # Run tracker.
+    # 是否要顯示
     if display:
         visualizer = visualization.Visualization(seq_info, update_ms=5)
     else:
+        # 這個沒有顯示上面的處理更加單純
         visualizer = visualization.NoVisualization(seq_info)
+
+    # no visulization
+    # 會執行 frame_callback(self, self.frame_idx)
     visualizer.run(frame_callback)
 
     # Store results.
+    # 輸出result到txt文件
     f = open(output_file, 'w')
     for row in results:
         print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1' % (

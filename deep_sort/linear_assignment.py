@@ -9,7 +9,11 @@ INFTY_COST = 1e+5
 
 
 def min_cost_matching(
-        distance_metric, max_distance, tracks, detections, track_indices=None,
+        distance_metric,          # 用什麼方式計算cost
+        max_distance,             # cost的閾值
+        tracks,
+        detections,
+        track_indices=None,
         detection_indices=None):
     """Solve linear assignment problem.
 
@@ -55,15 +59,20 @@ def min_cost_matching(
     cost_matrix = distance_metric(
         tracks, detections, track_indices, detection_indices)
     cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
-    indices = linear_assignment(cost_matrix)
+    indices = linear_assignment(cost_matrix)  # 匈牙利算法的實現
     indices = np.hstack([indices[0].reshape(((indices[0].shape[0]), 1)), indices[1].reshape(((indices[0].shape[0]),1))])
+    # indices
+    # 第幾個target對應到第幾個detection的索引
+
     matches, unmatched_tracks, unmatched_detections = [], [], []
     for col, detection_idx in enumerate(detection_indices):
         if col not in indices[:, 1]:
-            unmatched_detections.append(detection_idx)
+            unmatched_detections.append(detection_idx)  # 沒有配對到的detection
+
     for row, track_idx in enumerate(track_indices):
         if row not in indices[:, 0]:
-            unmatched_tracks.append(track_idx)
+            unmatched_tracks.append(track_idx)  # 沒有配對到的tracker
+
     for row, col in indices:
         track_idx = track_indices[row]
         detection_idx = detection_indices[col]
@@ -76,8 +85,13 @@ def min_cost_matching(
 
 
 def matching_cascade(
-        distance_metric, max_distance, cascade_depth, tracks, detections,
-        track_indices=None, detection_indices=None):
+        distance_metric,
+        max_distance,  # cost 的 threshold
+        cascade_depth, # life time
+        tracks,
+        detections,
+        track_indices=None,
+        detection_indices=None):
     """Run matching cascade.
 
     Parameters
@@ -118,32 +132,58 @@ def matching_cascade(
         track_indices = list(range(len(tracks)))
     if detection_indices is None:
         detection_indices = list(range(len(detections)))
-
-    unmatched_detections = detection_indices
+    # print("inside begin")
+    # print(track_indices)
+    # print(detection_indices)
+    # print("inside end")
+    unmatched_detections = detection_indices  # detection obj
     matches = []
-    for level in range(cascade_depth):
+    for level in range(cascade_depth):  # 0~30
         if len(unmatched_detections) == 0:  # No detections left
             break
 
+        # check track lifetime
+        # life time filter
+        # track_indices => track_indices_l
+        # 最小的 time_since_update=1
+        # 按照不同的level關聯
         track_indices_l = [
             k for k in track_indices
-            if tracks[k].time_since_update == 1 + level
-        ]
+            if tracks[k].time_since_update == 1 + level]
         if len(track_indices_l) == 0:  # Nothing to match at this level
             continue
-
+        
+        # 匈牙利分層匹配
+        # matches, unmatched_tracks, unmatched_detections
         matches_l, _, unmatched_detections = \
             min_cost_matching(
-                distance_metric, max_distance, tracks, detections,
-                track_indices_l, unmatched_detections)
+                distance_metric,
+                max_distance,
+                tracks,
+                detections,
+                track_indices_l,
+                unmatched_detections)
         matches += matches_l
+    
+    # print(set(track_indices))
+    # print(set(k for k, _ in matches))
     unmatched_tracks = list(set(track_indices) - set(k for k, _ in matches))
+    # 第一round trackers==[] 時
+    # matches = []
+    # unmatched_tracks = []
+    # unmatched_detections = detection_indices
     return matches, unmatched_tracks, unmatched_detections
 
 
 def gate_cost_matrix(
-        kf, cost_matrix, tracks, detections, track_indices, detection_indices,
-        gated_cost=INFTY_COST, only_position=False):
+        kf,
+        cost_matrix,  # 特徵距離，距離越長cost越大
+        tracks,
+        detections,
+        track_indices,
+        detection_indices,
+        gated_cost=INFTY_COST,  # 100000
+        only_position=False):
     """Invalidate infeasible entries in cost matrix based on the state
     distributions obtained by Kalman filtering.
 
@@ -178,13 +218,17 @@ def gate_cost_matrix(
         Returns the modified cost matrix.
 
     """
-    gating_dim = 2 if only_position else 4
-    gating_threshold = kalman_filter.chi2inv95[gating_dim]
+    gating_dim = 2 if only_position else 4  # 用幾個狀態
+    gating_threshold = kalman_filter.chi2inv95[gating_dim]  # 9.4877
     measurements = np.asarray(
-        [detections[i].to_xyah() for i in detection_indices])
+        [detections[i].to_xyah() for i in detection_indices]) # 所有的detection的xyah
     for row, track_idx in enumerate(track_indices):
         track = tracks[track_idx]
+        # 計算track以及所有測量值
+        # 估計值以及測量值的馬氏距離平方
         gating_distance = kf.gating_distance(
-            track.mean, track.covariance, measurements, only_position)
+            track.mean, track.covariance, measurements, only_position) 
+        # 判斷馬氏距離要小於gating threshold
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
+        # cost_matrix[target, :] = gating_distance # 直接用馬氏距離當作 cost function
     return cost_matrix

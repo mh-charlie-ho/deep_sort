@@ -69,20 +69,22 @@ class KalmanFilter(object):
             to 0 mean.
 
         """
+        # bounding box xyah => center x, center y, aspect ratio, height
         mean_pos = measurement
-        mean_vel = np.zeros_like(mean_pos)
-        mean = np.r_[mean_pos, mean_vel]
+        mean_vel = np.zeros_like(mean_pos)  # 初始化速度訊息
+        mean = np.r_[mean_pos, mean_vel]  # 合併位置跟速度訊息
 
+        # [center_x, center_y, aspect_ratio, height, velocity_x, velocity_y, velocity_aspect_ratio, velocity_height]
         std = [
-            2 * self._std_weight_position * measurement[3],
-            2 * self._std_weight_position * measurement[3],
+            2 * self._std_weight_position  * measurement[3],
+            2 * self._std_weight_position  * measurement[3],
             1e-2,
             2 * self._std_weight_position * measurement[3],
             10 * self._std_weight_velocity * measurement[3],
             10 * self._std_weight_velocity * measurement[3],
             1e-5,
             10 * self._std_weight_velocity * measurement[3]]
-        covariance = np.diag(np.square(std))
+        covariance = np.diag(np.square(std))  # 初始化一個共變異數矩陣 互相關初始化為零
         return mean, covariance
 
     def predict(self, mean, covariance):
@@ -116,6 +118,8 @@ class KalmanFilter(object):
             self._std_weight_velocity * mean[3]]
         motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
 
+        # 等速度模型
+        # 沒有加入不確定干擾
         mean = np.dot(self._motion_mat, mean)
         covariance = np.linalg.multi_dot((
             self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
@@ -151,7 +155,10 @@ class KalmanFilter(object):
             self._update_mat, covariance, self._update_mat.T))
         return mean, covariance + innovation_cov
 
-    def update(self, mean, covariance, measurement):
+    def update(self,
+               mean,
+               covariance, 
+               measurement):
         """Run Kalman filter correction step.
 
         Parameters
@@ -185,7 +192,10 @@ class KalmanFilter(object):
             kalman_gain, projected_cov, kalman_gain.T))
         return new_mean, new_covariance
 
-    def gating_distance(self, mean, covariance, measurements,
+    def gating_distance(self,
+                        mean,
+                        covariance,
+                        measurements,
                         only_position=False):
         """Compute gating distance between state distribution and measurements.
 
@@ -215,6 +225,7 @@ class KalmanFilter(object):
             `measurements[i]`.
 
         """
+        # Project state distribution to measurement space
         mean, covariance = self.project(mean, covariance)
         if only_position:
             mean, covariance = mean[:2], covariance[:2, :2]

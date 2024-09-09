@@ -48,6 +48,9 @@ def _cosine_distance(a, b, data_is_normalized=False):
         contains the squared distance between `a[i]` and `b[j]`.
 
     """
+    print("checked ===========")
+    print(a)
+    print("end ===========")
     if not data_is_normalized:
         a = np.asarray(a) / np.linalg.norm(a, axis=1, keepdims=True)
         b = np.asarray(b) / np.linalg.norm(b, axis=1, keepdims=True)
@@ -122,16 +125,15 @@ class NearestNeighborDistanceMetric(object):
 
     def __init__(self, metric, matching_threshold, budget=None):
 
-
         if metric == "euclidean":
             self._metric = _nn_euclidean_distance
         elif metric == "cosine":
             self._metric = _nn_cosine_distance
         else:
-            raise ValueError(
-                "Invalid metric; must be either 'euclidean' or 'cosine'")
-        self.matching_threshold = matching_threshold
-        self.budget = budget
+            raise ValueError("Invalid metric; must be either 'euclidean' or 'cosine'")
+
+        self.matching_threshold = matching_threshold  # 0.2
+        self.budget = budget  # 100
         self.samples = {}
 
     def partial_fit(self, features, targets, active_targets):
@@ -148,10 +150,13 @@ class NearestNeighborDistanceMetric(object):
 
         """
         for feature, target in zip(features, targets):
+            # samples = {1:[s1,s2,s3], 2:[s1,s2,s3], ...} 對應target以及其特徵的關係
             self.samples.setdefault(target, []).append(feature)
             if self.budget is not None:
-                self.samples[target] = self.samples[target][-self.budget:]
+                self.samples[target] = self.samples[target][-self.budget:]  # 從最後面開始算100個
+        # print(self.samples)
         self.samples = {k: self.samples[k] for k in active_targets}
+        # print(self.samples)
 
     def distance(self, features, targets):
         """Compute distance between features and targets.
@@ -171,7 +176,11 @@ class NearestNeighborDistanceMetric(object):
             `targets[i]` and `features[j]`.
 
         """
+        # feature is detection
         cost_matrix = np.zeros((len(targets), len(features)))
         for i, target in enumerate(targets):
+            print("testtest")
+            print(len(self.samples[target]))
+            print(len(features))
             cost_matrix[i, :] = self._metric(self.samples[target], features)
         return cost_matrix
